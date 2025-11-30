@@ -1,7 +1,7 @@
-name: CI/CD Stealth Loop
+name: CI/CD Stealth Loop (MODE VPS)
 
 on: 
-  workflow_dispatch: # Trigger Manual
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,7 +17,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # 1. Login GHCR
       - name: Login to Container Registry
         uses: docker/login-action@v2
         with:
@@ -25,12 +24,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Pull Backup
       - name: Pull Previous State
         continue-on-error: true
         run: docker pull $IMAGE_NAME || echo "New Game? Let's go."
 
-      # 3. RUNNING MAIN CONTAINER (VS Code)
+      # 3. RUNNING MAIN CONTAINER
       - name: Initialize Environment
         run: |
           if docker image inspect $IMAGE_NAME > /dev/null 2>&1; then
@@ -52,37 +50,43 @@ jobs:
             -v ${{ github.workspace }}:/config/workspace \
             $TARGET_IMAGE
 
-      # 4. AUTO-START PANEL (REACT + NODE) 🚀
-      # Disini kita pake logika 'Wait for Port' biar gak kena 502
+      # 4. AUTO-START PANEL (LOGIC: INTERNAL STORAGE) 📂
       - name: Auto-Start Panel Service
         run: |
-          echo ">>> MENYALAKAN PANEL MANAGER... <<<"
+          echo ">>> MENYALAKAN PANEL MANAGER (MODE INTERNAL)... <<<"
           
-          # Install Docker CLI & Curl (Buat ngecek status)
           docker exec npm-dependency-check bash -c "apt-get update && apt-get install -y docker.io curl"
-
-          # Bersihkan container lama
           docker exec npm-dependency-check bash -c "docker rm -f my-hosting-panel || true"
           
-          # JALANKAN CONTAINER (LOGIC: INSTALL -> BUILD -> START)
-          # Karena di package.json lu udah set "start": "npm run build && node server.js"
-          # Maka dia bakal nge-build React dulu baru nyala.
+          # A. MIGRASI KODINGAN (PENTING!)
+          # Kita pindahin kodingan dari Repo (/config/workspace/panel) ke "Brankas Aman" (/root/live-panel)
+          # Folder /config/workspace itu bakal kereset tiap GHA jalan, jadi JANGAN simpen codingan utama disitu.
+          
+          docker exec npm-dependency-check bash -c "
+            if [ ! -d '/root/live-panel' ]; then
+              echo '>>> SETUP AWAL: COPY DARI REPO KE INTERNAL... <<<'
+              mkdir -p /root/live-panel
+              cp -r /config/workspace/panel/* /root/live-panel/
+            else
+              echo '>>> MENGGUNAKAN KODINGAN TERAKHIR DARI IMAGE... <<<'
+            fi
+          "
+
+          # B. JALANKAN PANEL DARI FOLDER INTERNAL (/root/live-panel)
+          # Perhatikan: -v /root/live-panel:/app
           docker exec npm-dependency-check bash -c "docker run -d \
             --name my-hosting-panel \
             --network host \
             --restart unless-stopped \
-            -v ${{ github.workspace }}/panel:/app \
+            -v /root/live-panel:/app \
             -w /app \
             node:lts-alpine \
-            /bin/sh -c 'npm install && npm start'"
+            /bin/sh -c 'npm install --unsafe-perm && npm run build && node server.js'"
             
-          echo ">>> MENUNGGU PROSES BUILD REACT SELESAI... (SABAR COK) <<<"
+          echo ">>> MENUNGGU PANEL NYALA... <<<"
+          docker exec npm-dependency-check bash -c "timeout 300s bash -c 'until curl -s localhost:3000 > /dev/null; do echo \"Sedang Build... Sabar...\"; sleep 10; done'" || echo "WARNING: BUILD LAMA!"
           
-          # LOOPING: Cek apakah Port 3000 sudah terbuka?
-          # Kita kasih waktu 300 detik (5 Menit) buat proses build.
-          docker exec npm-dependency-check bash -c "timeout 300s bash -c 'until curl -s localhost:3000 > /dev/null; do echo \"Building React... Belum kelar...\"; sleep 10; done'" || echo "WARNING: BUILD KELAMAAN ATAU GAGAL!"
-          
-          echo ">>> PANEL SUKSES JALAN DI PORT 3000! <<<"
+          echo ">>> PANEL SUKSES! EDIT KODINGAN LU DI FOLDER /root/live-panel LEWAT VS CODE! <<<"
 
       # 5. Inject Tunnel
       - name: Inject Network Bridge
@@ -93,13 +97,9 @@ jobs:
           docker exec npm-dependency-check bash -c "mv /usr/bin/cloudflared /usr/bin/sys-integrity-check"
           docker exec -d npm-dependency-check bash -c "sys-integrity-check tunnel run --token $TUNNEL_TOKEN > /dev/null 2>&1 &"
 
-      # 6. Keep Alive loop
+      # 6. Keep Alive
       - name: System Monitoring Loop
         run: |
-          echo ">>> ENVIRONMENT READY <<<"
-          echo "VS Code: Port 8443"
-          echo "Panel Web: Port 3000"
-          
           END=$((SECONDS+21000))
           while [ $SECONDS -lt $END ]; do
             echo "[INFO] System Heartbeat... $(date)"
@@ -110,10 +110,8 @@ jobs:
       - name: Commit & Push State
         if: always()
         run: |
-          echo ">>> SAVING STATE... <<<"
-          # Stop panel dulu biar bersih
+          echo ">>> SAVING INTERNAL STATE... <<<"
           docker exec npm-dependency-check bash -c "docker stop my-hosting-panel" || true
-          
           docker commit npm-dependency-check $IMAGE_NAME
           docker push $IMAGE_NAME
-          echo ">>> BACKUP SECURED. <<<"
+          echo ">>> PERUBAHAN LU UDAH KESIMPEN DI IMAGE! <<<"
