@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "Panel Heroku KW Super Stealth",
   "main": "server.js",
-  "type": "module",  <-- PASTIKAN INI MODULE
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "npm run build && node server.js"  <-- INI LOGICNYA
+    "start": "npm run build && node server.js"
   },
   "dependencies": {
     "express": "^4.18.2"
