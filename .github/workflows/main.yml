@@ -1,52 +1,65 @@
-name: WebStorm on Docker (Tunnel)
+name: Jupyter Docker Clean Build
 
 on:
-  workflow_dispatch: # Tombol manual
+  workflow_dispatch:
 
 jobs:
-  hack-ide:
+  docker-jupyter:
     runs-on: ubuntu-latest
     steps:
-      # 1. Jalankan Container Webtop (XFCE Desktop)
-      - name: Deploy Webtop Container
+      # 1. BERSIH-BERSIH HOST (PENTING BIAR LEGA)
+      - name: 🧹 Hapus Sampah Host (Free 20GB+)
         run: |
-          echo "🚀 Menjalankan Docker container..."
-          docker run -d \
-            --name=webtop \
-            --privileged \
-            --shm-size=2gb \
-            -e PUID=1000 \
-            -e PGID=1000 \
-            -e TZ=Asia/Jakarta \
-            -p 3000:3000 \
-            lscr.io/linuxserver/webtop:ubuntu-xfce
+          echo "💾 Space Awal:"
+          df -h | grep '/mnt'
           
-          echo "💤 Nunggu bentar biar container booting..."
-          sleep 10
+          # Hapus Android SDK & Dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          
+          # Hapus Browser di Host (Chrome/Firefox/Edge) - Kan kita pake Docker
+          sudo apt-get purge -y google-chrome-stable microsoft-edge-stable firefox
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          
+          echo "✨ Space Setelah Bersih-bersih:"
+          df -h | grep '/mnt'
 
-      # 2. Setup Cloudflare Tunnel (Biar bisa diakses dari luar)
-      - name: Start Tunnel
+      # 2. JALANKAN JUPYTER DI DALAM DOCKER
+      # Gw pake image 'scipy-notebook' biar udah ada Pandas, Numpy, Matplotlib.
+      - name: 🐳 Run Jupyter Docker
         run: |
-          echo "🚇 Mendownload Cloudflared..."
+          docker run -d \
+            --name=my-jupyter \
+            -p 8888:8888 \
+            -e JUPYTER_TOKEN='gantigw' \
+            -e JUPYTER_ENABLE_LAB=yes \
+            -v ${{ github.workspace }}:/home/jovyan/work \
+            jupyter/scipy-notebook:latest
+
+          echo "Tunggu container warming up..."
+          sleep 10
+          docker ps
+
+      # 3. CLOUDFLARE TUNNEL
+      - name: 🚇 Start Tunnel
+        run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
           
-          echo "🔗 Membuka tunnel..."
-          # Jalankan tunnel background & simpan log
-          cloudflared tunnel --url http://localhost:3000 > tunnel.log 2>&1 &
+          # Tembak ke localhost:8888 (Port host yang dimapping dari Docker)
+          cloudflared tunnel --url http://localhost:8888 > tunnel.log 2>&1 &
           
           sleep 10
           
           echo "========================================================="
-          echo "👇 KLIK LINK DI BAWAH INI BUAT MASUK DESKTOP 👇"
+          echo "👇 LINK JUPYTER (DARI DALAM DOCKER) 👇"
           echo "========================================================="
           grep -o 'https://.*\.trycloudflare.com' tunnel.log
           echo "========================================================="
-          echo "User: abc | Pass: abc"
+          echo "🔑 Token: gantigw"
           echo "========================================================="
 
-      # 3. Biarin jalan terus (Max 6 jam limit Github Action)
-      - name: Keep Alive
-        run: |
-          echo "☕ Server jalan. Jangan diclose tab ini kalau mau logs-nya update."
-          sleep 360m
+      # 4. KEEP ALIVE
+      - name: ☕ Keep Alive (6 Jam)
+        run: sleep 360m
