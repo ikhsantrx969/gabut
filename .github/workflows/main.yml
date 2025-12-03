@@ -20,11 +20,11 @@ jobs:
           
           # Kita bom 8 commit sekaligus biar warnanya IJO TUA (Pekat)
           # Loop 8 kali
-          for i in {1..8}
+          for i in {1..1}
           do
              # --date itu kuncinya. Format: YYYY-MM-DDThh:mm:ss
              # Kita set jam beda-beda dikit biar natural
-             git commit --allow-empty --date="2025-01-06T14:0$i:00" -m "Refactor backend module logic for Q1 release"
+             git commit --allow-empty --date="2025-01-07T14:0$i:00" -m "Refactor backend module logic for Q1 release"
           done
           git pull --rebase origin main
           git push
