@@ -24,7 +24,7 @@ jobs:
           do
              # --date itu kuncinya. Format: YYYY-MM-DDThh:mm:ss
              # Kita set jam beda-beda dikit biar natural
-             git commit --allow-empty --date="2025-11-01T14:0$i:00" -m "Refactor backend module logic for Q1 release"
+             git commit --allow-empty --date="2025-2-01T14:0$i:00" -m "Refactor backend module logic for Q1 release"
           done
           git pull --rebase origin main
           git push
